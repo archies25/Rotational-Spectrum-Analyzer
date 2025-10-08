@@ -1,9 +1,6 @@
 {
-  "cat_files": [
-    "molecules/acenaphthene/acenaphthene.cat",
-    "molecules/ethanol/ethanol.cat"
-  ],
-  "csv_file": "molecules/acenaphthene/acenaphthene_measurement.csv",
+  "cat_file": "/Users/nicolechidester/pickett/iq1cn/iq1cn.cat",
+  "csv_file": "/Users/nicolechidester/pickett/iq1cn/fidtogether.csv",
 
   "qn_labels": {
     "UpperJ": "J",
