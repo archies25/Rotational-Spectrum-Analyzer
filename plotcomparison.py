@@ -171,7 +171,7 @@ for i, c in enumerate(catalogs):
 meas_df = pd.read_csv(csv_file_path, sep=";")
 meas_freqs = meas_df.iloc[:, 0].values
 meas_intensities = meas_df.iloc[:, 1].values
-meas_intensities = meas_intensities / np.max(meas_intensities)
+# meas_intensities = meas_intensities / np.max(meas_intensities)
 
 # =========================
 # Helpers
@@ -1616,7 +1616,7 @@ def update_plot(fit_params, percat, zoom, mode, intensity_threshold, selected_mu
             template="simple_white",
             height=600,
             xaxis_title="Frequency (MHz)",
-            yaxis_title="Normalized Intensity" + (" (Sim Flipped)" if flip else ""),
+            yaxis_title="Intensity" + (" (Sim Flipped)" if flip else ""),
             uirevision="zoom-lock",
             plot_bgcolor="#5A5A5A",
             paper_bgcolor="#5A5A5A",
