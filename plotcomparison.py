@@ -210,20 +210,21 @@ def compute_uncertainties(assignments, selection_range, delta_F=DELTA_F_DEFAULT)
 
     # ---- (1) merge term: spread of sims mapped to same obs ----
     sigma_merge = np.zeros(n, dtype=float)
-    for i, oi in enumerate(obs):
-        sims = np.asarray(sim_by_obs[oi], dtype=float)
-        if sims.size > 1:
-            smax = float(np.max(sims)); smin = float(np.min(sims))
-            sigma_merge[i] = 0.5 * (smax - smin)
+    # for i, oi in enumerate(obs):
+    #     sims = np.asarray(sim_by_obs[oi], dtype=float)
+    #     if sims.size > 1:
+    #         smax = float(np.max(sims)); smin = float(np.min(sims))
+    #         sigma_merge[i] = 0.5 * (smax - smin)
 
     # ---- (2) interference term: crowding from nearby obs ----
-    if n > 1:
-        D = np.abs(obs[:, None] - obs[None, :])
-        np.fill_diagonal(D, 0.0)
-        C = 0.5 * D * (1.0 - np.tanh(D / float(delta_F)))
-        sigma_interf = np.sqrt(np.sum(C * C, axis=1))
-    else:
-        sigma_interf = np.zeros(n, dtype=float)
+    # if n > 1:
+    #     D = np.abs(obs[:, None] - obs[None, :])
+    #     np.fill_diagonal(D, 0.0)
+    #     C = 0.5 * D * (1.0 - np.tanh(D / float(delta_F)))
+    #     sigma_interf = np.sqrt(np.sum(C * C, axis=1))
+    # else:
+    #     sigma_interf = np.zeros(n, dtype=float)
+    sigma_interf = np.zeros(n, dtype=float)
 
     # ---- (3) instrumental/SNR term ----
     # Params for fallbacks (when no FitCtx):
@@ -236,7 +237,7 @@ def compute_uncertainties(assignments, selection_range, delta_F=DELTA_F_DEFAULT)
     bw = (sel_w / 6.0) if sel_w > 0 else 0.30
     bw = max(0.05, min(bw, 0.80))  # 0.05–0.80 MHz
 
-    SNR_FLOOR = 4.0  # keep σ_instr near your base error when data is decent
+    SNR_FLOOR = 3.0  # keep σ_instr near your base error when data is decent
 
     def nearest_idx(x):
         j = np.searchsorted(meas_freqs, x)
@@ -244,12 +245,18 @@ def compute_uncertainties(assignments, selection_range, delta_F=DELTA_F_DEFAULT)
         if j >= len(meas_freqs): return len(meas_freqs) - 1
         return j if (abs(meas_freqs[j] - x) < abs(meas_freqs[j-1] - x)) else (j-1)
 
-    def robust_rms(vals):
-        if vals.size >= 12:
-            med = float(np.median(vals))
-            mad = float(np.median(np.abs(vals - med)))
-            return max(1.4826 * mad, 0.005)
-        return max(float(np.std(vals)) if vals.size > 0 else 0.01, 0.005)
+    def get_rms(y,sigma=3):
+        #copied from bmcguir2's molsim
+        tmp_y = np.copy(y)
+        i = np.nanmax(tmp_y)
+        rms = np.sqrt(np.nanmean(np.square(tmp_y)))
+        
+        while i > sigma*rms:
+            tmp_y = tmp_y[tmp_y<sigma*rms]
+            rms = np.sqrt(np.nanmean(np.square(tmp_y)))
+            i = np.nanmax(tmp_y)
+
+        return rms
 
     sigma_instr = np.zeros(n, dtype=float)
     snr_vals = np.zeros(n, dtype=float)
@@ -259,47 +266,12 @@ def compute_uncertainties(assignments, selection_range, delta_F=DELTA_F_DEFAULT)
     for i, oi in enumerate(obs):
         fitctx = fitctx_by_obs.get(oi)
 
-        if fitctx and isinstance(fitctx, dict):
-            # --- Preferred path: use fitted context ---
-            baseline_std = fitctx.get("baseline_std", None)
-            peaks = fitctx.get("peaks", None)
-
-            # baseline RMS from fit (already estimated from sidebands during fit)
-            if isinstance(baseline_std, (int, float)) and np.isfinite(baseline_std) and baseline_std > 0:
-                baseline_rms = float(baseline_std)
-            else:
-                # fallback local sidebands
-                left_mask  = (meas_freqs >= oi - 2*bw) & (meas_freqs <  oi - bw)
-                right_mask = (meas_freqs >  oi + bw)  & (meas_freqs <= oi + 2*bw)
-                baseline_vals = np.concatenate([meas_intensities[left_mask], meas_intensities[right_mask]])
-                baseline_rms = robust_rms(baseline_vals)
-
-            # signal height above baseline at the observed frequency
-            if peaks and isinstance(peaks, list):
-                try:
-                    # sum of all fitted Gaussians evaluated at oi (height above baseline)
-                    sig = 0.0
-                    for p in peaks:
-                        A = float(p["amp"]); M = float(p["mu"]); S = float(p["sigma"])
-                        sig += A * np.exp(-0.5 * ((oi - M) / S) ** 2)
-                    peak_height = float(sig)
-                except Exception:
-                    # very safe fallback if peaks malformed
-                    j = nearest_idx(oi)
-                    peak_height = float(meas_intensities[j])
-            else:
-                # no peaks in context → fallback to measured
-                j = nearest_idx(oi)
-                peak_height = float(meas_intensities[j])
-
-        else:
-            # --- Fallback path: no FitCtx for this obs ---
-            j = nearest_idx(oi)
-            peak_height = float(meas_intensities[j])
-            left_mask  = (meas_freqs >= oi - 2*bw) & (meas_freqs <  oi - bw)
-            right_mask = (meas_freqs >  oi + bw)  & (meas_freqs <= oi + 2*bw)
-            baseline_vals = np.concatenate([meas_intensities[left_mask], meas_intensities[right_mask]])
-            baseline_rms = robust_rms(baseline_vals)
+        # --- Fallback path: no FitCtx for this obs ---
+        j = nearest_idx(oi)
+        peak_height = float(meas_intensities[j])
+        mask = (meas_freqs >  oi - 5)  & (meas_freqs <= oi + 5) #I think this should measure the noise over a 10 MHz interval centered at the fitting frequency
+        baseline_vals = meas_intensities[mask]
+        baseline_rms = get_rms(baseline_vals)
 
         # SNR and σ_instr
         SNR = (peak_height / baseline_rms) if baseline_rms > 0 else float("inf")
